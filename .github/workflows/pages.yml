@@ -1,0 +1,75 @@
+# サイトを GitHub Pages に公開する。
+# 採譜はすべて、使う人それぞれのブラウザの中（WebGPU）で行う。ここでは画面と「ブラウザ版エンジン」
+# （public/engine/ の JS・Python 一式・AI モデル）を静的ファイルとして書き出すだけ。
+name: サイトを公開
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - "backend/app/**"
+      - "tools/build_web_engine.py"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+env:
+  # AI モデル（ONNX など）を置いている Release。モデルを作り直したら新しいタグにして worker.js の MODEL_CACHE も上げる
+  MODELS_TAG: models-v1
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: ブラウザ版エンジンの Python 一式を作る
+        run: |
+          pip install mido==1.3.3
+          python tools/build_web_engine.py
+      - name: AI モデルを取得する（Release から）
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p frontend/public/engine/models
+          gh release download "$MODELS_TAG" --repo "$GITHUB_REPOSITORY" --dir frontend/public/engine/models --pattern "*.onnx" --pattern "*.bin" --pattern "*.json"
+          ls -la frontend/public/engine/models
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: 依存を入れる
+        working-directory: frontend
+        run: npm ci
+      - name: 静的サイトを書き出す
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_BASE_PATH: /gakufu
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: npx next build
+      - run: touch frontend/out/.nojekyll
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

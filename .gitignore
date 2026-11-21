@@ -1,0 +1,25 @@
+# Python
+backend/.venv/
+backend/data/
+backend/models/
+__pycache__/
+*.pyc
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/next-env.d.ts
+frontend/tsconfig.tsbuildinfo
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+
+# ブラウザ版エンジンの生成物（モデルは Release から、Python 一式はビルド時に作る）
+frontend/public/engine/models/
+frontend/public/engine/py/
+tools/onnx/
+frontend/public/engine/testvec/
+frontend/public/engine/bench.html

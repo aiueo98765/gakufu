@@ -1,0 +1,195 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", "Consolas", monospace;
+  --color-ink-950: #07080d;
+  --color-ink-900: #0c0e16;
+  --color-ink-850: #11141f;
+  --color-ink-800: #161a28;
+  --color-ink-700: #20263a;
+  --color-ink-600: #2c3350;
+  --color-ink-500: #414a6b;
+  --color-ink-400: #6b7499;
+  --color-ink-300: #9aa2c4;
+  --color-ink-200: #c7cce4;
+  --color-ink-100: #e6e9f6;
+  --color-rh: #5ab4ff;
+  --color-lh: #ffb547;
+  --color-easy: #34d399;
+  --color-standard: #60a5fa;
+  --color-virtuoso: #f472b6;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background: var(--color-ink-950);
+  color: var(--color-ink-100);
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.bg-aurora {
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(99, 102, 241, 0.22), transparent 60%),
+    radial-gradient(900px 500px at 95% 0%, rgba(236, 72, 153, 0.16), transparent 60%),
+    radial-gradient(800px 600px at 50% 110%, rgba(14, 165, 233, 0.12), transparent 60%),
+    var(--color-ink-950);
+}
+
+.glass {
+  background: linear-gradient(180deg, rgba(22, 26, 40, 0.86), rgba(17, 20, 31, 0.86));
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(14px);
+}
+
+.text-gradient {
+  background: linear-gradient(90deg, #a5b4fc, #f0abfc 45%, #7dd3fc);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border-radius: 0.6rem;
+  padding: 0.45rem 0.8rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, opacity 0.15s;
+  white-space: nowrap;
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.btn-ghost {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--color-ink-100);
+}
+.btn-ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.09);
+}
+.btn-primary {
+  background: linear-gradient(135deg, #6366f1, #d946ef);
+  color: white;
+  box-shadow: 0 6px 24px -8px rgba(217, 70, 239, 0.6);
+}
+.btn-primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.btn-active {
+  background: rgba(129, 140, 248, 0.22);
+  border-color: rgba(129, 140, 248, 0.55);
+  color: #e0e7ff;
+}
+
+.field {
+  background: rgba(7, 8, 13, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.6rem;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.9rem;
+  color: var(--color-ink-100);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.field:focus {
+  border-color: rgba(129, 140, 248, 0.7);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+}
+select.field {
+  padding-right: 1.8rem;
+}
+select.field option {
+  background: var(--color-ink-850);
+}
+
+.label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--color-ink-300);
+  text-transform: uppercase;
+}
+
+.kbd {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 0.3rem;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--color-ink-200);
+}
+
+input[type="range"].range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #818cf8 var(--fill, 50%), rgba(255, 255, 255, 0.12) var(--fill, 50%));
+  outline: none;
+}
+input[type="range"].range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: white;
+  box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.35);
+  cursor: pointer;
+}
+input[type="range"].range::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: white;
+  border: none;
+}
+
+/* 五線譜（白い紙） */
+.sheet-paper {
+  background: #fdfcf8;
+  color: #111;
+  border-radius: 0.75rem;
+  box-shadow: 0 20px 60px -20px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+.scroll-thin::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -400px 0;
+  }
+  100% {
+    background-position: 400px 0;
+  }
+}
+.progress-shimmer {
+  background-image: linear-gradient(90deg, rgba(255, 255, 255, 0) 0, rgba(255, 255, 255, 0.28) 50%, rgba(255, 255, 255, 0) 100%);
+  background-size: 400px 100%;
+  animation: shimmer 1.6s linear infinite;
+}
