@@ -87,7 +87,7 @@ const MODELS = {
   pianoRnnJson: { file: "piano_rnn.json", label: "ピアノ採譜AI（設定）", mb: 0 },
   pianoRnnOnnx: { file: "piano_rnn.onnx", label: "ピアノ採譜AI（後半・GPU なし用）", mb: 42 },
   beat: { file: "beat_this.onnx", label: "拍・小節頭AI (Beat This!)", mb: 44 },
-  basic: { file: "basic_pitch.onnx", label: "楽器採譜AI (Basic Pitch)", mb: 0.2 },
+  basic: { file: "basic_pitch.onnx", label: "楽器採譜AI (Basic Pitch)", mb: 0.23 },
 };
 
 // モデルを更新したら MODEL_CACHE の版を上げる。古い版はブラウザから消す
@@ -116,7 +116,8 @@ async function modelBytes(key, onProgress) {
   }
   const res = await fetch(url);
   if (!res.ok) throw new Error(`${m.label} を取得できませんでした（${res.status}）`);
-  const total = Number(res.headers.get("content-length")) || m.mb * 1e6;
+  // GitHub Pages は圧縮して送ることがあり、そのとき content-length は圧縮後の大きさなので使わない
+  const total = (!res.headers.get("content-encoding") && Number(res.headers.get("content-length"))) || m.mb * 1e6;
   const reader = res.body.getReader();
   const parts = [];
   let got = 0;
