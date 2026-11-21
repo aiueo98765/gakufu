@@ -4,7 +4,7 @@
  * 採譜はすべて閲覧している人の PC の中（WebGPU / WASM）で行う。動画・音声ファイルの読み込み（デコード）は
  * Worker では使えない Web Audio API が要るので、ここ（画面側）で行ってから Worker に渡す。
  */
-import type { ArrangeOptions, Mode } from "./types";
+import type { ArrangeOptions, Job, Mode } from "./types";
 
 const BASE = process.env.NEXT_PUBLIC_BASE_PATH || "";
 const BUILD = process.env.NEXT_PUBLIC_BUILD_ID || "dev";
@@ -164,6 +164,29 @@ export async function startLocalJob(
     },
     channels.map((c) => c.buffer),
   );
+}
+
+/**
+ * 中断した曲などを、ブラウザに保存してある元の音声から同じ設定でもう一度実行する。
+ * 新しい曲として始め、元の曲は消す。
+ */
+export async function rerunLocalJob(job: Job): Promise<{ id: string }> {
+  const o = await call<{ blob: Blob; offset: number } | null>("audio", { jid: job.id, which: "source" });
+  if (!o) throw new Error("この曲の元の音声がブラウザに残っていないため、もう一度実行できません。ファイルを選び直してください。");
+  const r = job.request;
+  const created = await startLocalJob(
+    o.blob,
+    { mode: r.mode, sourceType: r.sourceType, separation: r.separation, start: r.start ?? null, end: r.end ?? null, options: r.options ?? {} },
+    {
+      title: job.meta.title || r.filename || "曲",
+      platform: r.platform,
+      filename: r.filename,
+      url: r.url,
+      sourceLabel: job.steps.download?.detail || "保存してあった音声",
+    },
+  );
+  await call("remove", { jid: job.id });
+  return created;
 }
 
 /** 再生用の音声（元の音・採譜にかけた音）。offset は楽譜の 0 秒が音声の何秒目か */

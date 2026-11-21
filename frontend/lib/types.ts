@@ -133,6 +133,7 @@ export interface Job {
     separation: string;
     start?: number | null;
     end?: number | null;
+    options?: ArrangeOptions;
   };
   meta: {
     title?: string;

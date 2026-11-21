@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   ChevronDown,
   Clock,
@@ -21,6 +21,9 @@ import { ModeCards, MODE_INFO } from "@/components/ModeCards";
 import { EngineGate } from "@/components/EngineGate";
 import { PlatformIcon, PLATFORM_LABEL, detectPlatform } from "@/components/PlatformIcon";
 import { TabCapture } from "@/components/TabCapture";
+import { JobView } from "@/components/JobView";
+
+const BASE = process.env.NEXT_PUBLIC_BASE_PATH || "";
 
 const SOURCE_TYPES = [
   { id: "auto", label: "自動判定", hint: "Stem の比率から判定" },
@@ -73,6 +76,23 @@ export default function Home() {
   // 処理する場所（このブラウザ / インストール版のエンジン）。画面を作った後に読む（サーバー側の描画とそろえるため）
   const [where, setWhere] = useState<EngineMode>("browser");
   const browser = where === "browser";
+
+  // ブラウザ版は、このタブの Worker で処理する。ページを移動すると（公開直後のキャッシュの食い違いなどで
+  // 読み込み直しになったとき）処理が止まるので、採譜を始めたらページは移動せず、URL だけ /job/ に替えて同じ画面に出す
+  const pathname = usePathname();
+  const [activeJob, setActiveJob] = useState<string | null>(null);
+  const openJob = (id: string) => {
+    if (!browser) return router.push(`/job/?id=${id}`);
+    setActiveJob(id);
+    window.history.pushState(null, "", `${BASE}/job/?id=${id}`);
+    window.scrollTo(0, 0);
+  };
+  useEffect(() => {
+    if (!pathname.includes("/job")) {
+      setActiveJob(null);
+      setSubmitting(false);
+    }
+  }, [pathname]);
 
   const platform = useMemo(() => detectPlatform(url), [url]);
 
@@ -169,7 +189,7 @@ export default function Home() {
         { mode, sourceType, separation, start: r.s, end: r.en, options },
         { title: info.title, platform: info.platform, url: info.url, sourceLabel: `タブの録音 ${formatSec(info.seconds)}` },
       );
-      router.push(`/job/?id=${job.id}`);
+      openJob(job.id);
     } catch (err) {
       setError((err as Error).message);
       setSubmitting(false);
@@ -189,7 +209,7 @@ export default function Home() {
         tab === "url"
           ? await api.createJob({ url, mode, sourceType, separation, start: s, end: en, options })
           : await api.uploadJob(file as File, { mode, sourceType, separation, start: s, end: en, options });
-      router.push(`/job/?id=${job.id}`);
+      openJob(job.id);
     } catch (err) {
       setError((err as Error).message);
       setSubmitting(false);
@@ -197,6 +217,23 @@ export default function Home() {
   }
 
   const canSubmit = tab === "url" ? !!platform : !!file;
+
+  if (activeJob && pathname.includes("/job")) {
+    return (
+      <JobView
+        id={activeJob}
+        onBack={() => {
+          setActiveJob(null);
+          setSubmitting(false);
+          window.history.pushState(null, "", `${BASE}/`);
+        }}
+        onRerun={(nid) => {
+          setActiveJob(nid);
+          window.history.replaceState(null, "", `${BASE}/job/?id=${nid}`);
+        }}
+      />
+    );
+  }
 
   return (
     <main className="bg-aurora min-h-screen">
@@ -448,7 +485,7 @@ export default function Home() {
         </form>
         )}
 
-        <RecentJobs jobs={jobs} onDelete={async (id) => {
+        <RecentJobs jobs={jobs} onOpen={openJob} onDelete={async (id) => {
           await api.remove(id);
           setJobs((js) => js.filter((j) => j.id !== id));
         }} />
@@ -498,8 +535,7 @@ const STATUS_LABEL: Record<string, string> = {
   canceled: "中止",
 };
 
-function RecentJobs({ jobs, onDelete }: { jobs: JobSummary[]; onDelete: (id: string) => void }) {
-  const router = useRouter();
+function RecentJobs({ jobs, onDelete, onOpen }: { jobs: JobSummary[]; onDelete: (id: string) => void; onOpen: (id: string) => void }) {
   if (!jobs.length) return null;
   return (
     <section className="mx-auto mt-12 max-w-4xl">
@@ -512,8 +548,8 @@ function RecentJobs({ jobs, onDelete }: { jobs: JobSummary[]; onDelete: (id: str
             key={j.id}
             role="button"
             tabIndex={0}
-            onClick={() => router.push(`/job/?id=${j.id}`)}
-            onKeyDown={(e) => e.key === "Enter" && router.push(`/job/?id=${j.id}`)}
+            onClick={() => onOpen(j.id)}
+            onKeyDown={(e) => e.key === "Enter" && onOpen(j.id)}
             className="glass flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 transition hover:bg-white/[0.06]"
           >
             <PlatformIcon platform={j.platform} />

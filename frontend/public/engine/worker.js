@@ -946,6 +946,8 @@ const handlers = {
   async upload({ req, meta, pcm, original, sourceLabel, note, startSec, duration }) {
     const job = await pyjson("job_create", JSON.stringify(req), JSON.stringify(meta));
     await persistJob(job.id, true);
+    // 元の音声は先に保存しておく（途中でページが閉じられても「もう一度実行」できるように）
+    if (original) await putFile(`${job.id}:original`, { blob: original, offset: startSec || 0 });
     enqueue({ jid: job.id, run: () => runJob(job.id, { req, pcm, original, sourceLabel, note, startSec, duration }) });
     return job;
   },
@@ -977,9 +979,10 @@ const handlers = {
   },
 
   async audio({ jid, which }) {
-    if (which === "original") {
+    if (which === "original" || which === "source") {
       const o = await getFile(`${jid}:original`);
       if (o) return { blob: o.blob, offset: o.offset };
+      if (which === "source") return null; // もう一度実行する用：元の音声だけ
     }
     const t = await getFile(`${jid}:target`);
     if (!t) return null;
