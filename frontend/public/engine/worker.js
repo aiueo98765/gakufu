@@ -291,13 +291,22 @@ async function saveJobFiles(ctx, jid) {
 // 曲のファイルを IndexedDB に書き戻す。続けて呼ばれたら 0.5 秒ごとにまとめる
 // （先送りし続けると、処理中ずっと保存されないので、予約済みならそのまま待つ）
 const persistTimers = new Map();
+const saving = new Map(); // 書き込み中の曲（完了するまで読み直しの対象にしない）
 let persistChain = Promise.resolve();
 function persistJob(jid, now = false) {
   if (!jid) return Promise.resolve();
   const run = () => {
     clearTimeout(persistTimers.get(jid));
     persistTimers.delete(jid);
-    persistChain = persistChain.then(async () => saveJobFiles(await py(), jid)).catch((e) => console.warn("保存に失敗", e));
+    saving.set(jid, (saving.get(jid) || 0) + 1);
+    persistChain = persistChain
+      .then(async () => saveJobFiles(await py(), jid))
+      .catch((e) => console.warn("保存に失敗", e))
+      .finally(() => {
+        const n = (saving.get(jid) || 1) - 1;
+        if (n > 0) saving.set(jid, n);
+        else saving.delete(jid);
+      });
     return persistChain;
   };
   if (now) return run();
@@ -305,26 +314,23 @@ function persistJob(jid, now = false) {
   return Promise.resolve();
 }
 
-// このタブが受け持っている曲（処理中・順番待ち）。別タブの変更を読み直すときに触らない
+// このタブが受け持っている曲（処理中・順番待ち・保存待ち・書き込み中）。別タブの変更を読み直すときに触らない
 function localJobs() {
   const s = new Set(queue.map((t) => t.jid));
   if (current) s.add(current.jid);
+  for (const j of persistTimers.keys()) s.add(j);
+  for (const j of saving.keys()) s.add(j);
   return s;
 }
 
 // 別のタブが書き換えた曲を読み直す（このタブで処理中の曲は除く）
 async function reloadJob(jid) {
   if (localJobs().has(jid)) return;
-  if (persistTimers.has(jid)) {
-    // このタブの書き込みが保存待ち＝このタブが書き手。読み直さずに保存を先に済ませる
-    await persistJob(jid, true);
-    return;
-  }
   const ctx = await py();
   const dir = `/data/jobs/${jid}/`;
   const files = await idb("readonly", (st) => getAllRange(st, IDBKeyRange.bound(dir, dir + "￿")), "fs");
   // 読み込みを待っている間に、このタブでその曲を書き換え始めていたら読み直さない
-  if (localJobs().has(jid) || persistTimers.has(jid)) return;
+  if (localJobs().has(jid)) return;
   for (const [p] of jobFiles(ctx.FS, jid)) {
     try {
       ctx.FS.unlink(p);
@@ -355,7 +361,6 @@ async function reloadList() {
   // 待っている間に新しい曲を作ったり処理を始めたりしているので、受け持ちの曲はここで（待たずに）確かめる。
   // 受け持ちの曲・保存待ちの曲は読み直さず、一覧から消すこともしない
   const keep = localJobs();
-  for (const j of persistTimers.keys()) keep.add(j);
   for (const [j, data] of jsons) if (data && !keep.has(j)) writeFsFile(ctx.FS, `/data/jobs/${j}/job.json`, data);
   ctx.W.refresh_all(JSON.stringify(ids.filter((j) => !keep.has(j))), JSON.stringify([...keep]));
 }
@@ -960,10 +965,17 @@ const handlers = {
 
   async upload({ req, meta, pcm, original, sourceLabel, note, startSec, duration }) {
     const job = await pyjson("job_create", JSON.stringify(req), JSON.stringify(meta));
-    await persistJob(job.id, true);
-    // 元の音声は先に保存しておく（途中でページが閉じられても「もう一度実行」できるように）
-    if (original) await putFile(`${job.id}:original`, { blob: original, offset: startSec || 0 });
-    enqueue({ jid: job.id, run: () => runJob(job.id, { req, pcm, original, sourceLabel, note, startSec, duration }) });
+    // 作ったらすぐ（ほかの処理を挟まずに）順番待ちに入れる。間に「別タブの変更の読み直し」が入ると、
+    // まだどこにも保存していない新しい曲を「一覧に無い曲」として消してしまうため
+    enqueue({
+      jid: job.id,
+      run: async () => {
+        await persistJob(job.id, true);
+        // 元の音声は先に保存しておく（途中でページが閉じられても「もう一度実行」できるように）
+        if (original) await putFile(`${job.id}:original`, { blob: original, offset: startSec || 0 });
+        await runJob(job.id, { req, pcm, original, sourceLabel, note, startSec, duration });
+      },
+    });
     return job;
   },
 
@@ -988,8 +1000,13 @@ const handlers = {
   async retranscribe({ jid, engine }) {
     const start = await pyjson("job_retranscribe_start", jid, engine);
     if (start.error) return { status: start.error.status, json: { detail: start.error.detail } };
-    await persistJob(jid, true);
-    enqueue({ jid, run: () => runRetranscribe(jid, engine, start) });
+    enqueue({
+      jid,
+      run: async () => {
+        await persistJob(jid, true);
+        await runRetranscribe(jid, engine, start);
+      },
+    });
     return { status: 200, json: start.job };
   },
 
