@@ -288,25 +288,33 @@ async function saveJobFiles(ctx, jid) {
   }, "fs");
 }
 
-// 曲のファイルを IndexedDB に書き戻す。続けて呼ばれたら少し待ってまとめる。
+// 曲のファイルを IndexedDB に書き戻す。続けて呼ばれたら 0.5 秒ごとにまとめる
+// （先送りし続けると、処理中ずっと保存されないので、予約済みならそのまま待つ）
 const persistTimers = new Map();
 let persistChain = Promise.resolve();
 function persistJob(jid, now = false) {
   if (!jid) return Promise.resolve();
-  clearTimeout(persistTimers.get(jid));
   const run = () => {
+    clearTimeout(persistTimers.get(jid));
     persistTimers.delete(jid);
     persistChain = persistChain.then(async () => saveJobFiles(await py(), jid)).catch((e) => console.warn("保存に失敗", e));
     return persistChain;
   };
   if (now) return run();
-  persistTimers.set(jid, setTimeout(run, 500));
+  if (!persistTimers.has(jid)) persistTimers.set(jid, setTimeout(run, 500));
   return Promise.resolve();
+}
+
+// このタブが受け持っている曲（処理中・順番待ち）。別タブの変更を読み直すときに触らない
+function localJobs() {
+  const s = new Set(queue.map((t) => t.jid));
+  if (current) s.add(current.jid);
+  return s;
 }
 
 // 別のタブが書き換えた曲を読み直す（このタブで処理中の曲は除く）
 async function reloadJob(jid) {
-  if (current?.jid === jid) return;
+  if (localJobs().has(jid)) return;
   if (persistTimers.has(jid)) {
     // このタブの書き込みが保存待ち＝このタブが書き手。読み直さずに保存を先に済ませる
     await persistJob(jid, true);
@@ -315,6 +323,8 @@ async function reloadJob(jid) {
   const ctx = await py();
   const dir = `/data/jobs/${jid}/`;
   const files = await idb("readonly", (st) => getAllRange(st, IDBKeyRange.bound(dir, dir + "￿")), "fs");
+  // 読み込みを待っている間に、このタブでその曲を書き換え始めていたら読み直さない
+  if (localJobs().has(jid) || persistTimers.has(jid)) return;
   for (const [p] of jobFiles(ctx.FS, jid)) {
     try {
       ctx.FS.unlink(p);
@@ -337,14 +347,17 @@ async function reloadList() {
     r.onerror = () => res([]);
   }), "fs");
   const ids = [...new Set(keys.map((k) => /^\/data\/jobs\/([0-9a-f]{12})\/job\.json$/.exec(k)?.[1]).filter(Boolean))];
-  const busy = current?.jid || "";
-  const jsons = await idb("readonly", (st) => Promise.all(ids.filter((j) => j !== busy).map((j) => new Promise((res) => {
+  const jsons = await idb("readonly", (st) => Promise.all(ids.map((j) => new Promise((res) => {
     const r = st.get(`/data/jobs/${j}/job.json`);
     r.onsuccess = () => res([j, r.result]);
     r.onerror = () => res([j, null]);
   }))), "fs");
-  for (const [j, data] of jsons) if (data) writeFsFile(ctx.FS, `/data/jobs/${j}/job.json`, data);
-  ctx.W.refresh_all(JSON.stringify(ids), busy);
+  // 待っている間に新しい曲を作ったり処理を始めたりしているので、受け持ちの曲はここで（待たずに）確かめる。
+  // 受け持ちの曲・保存待ちの曲は読み直さず、一覧から消すこともしない
+  const keep = localJobs();
+  for (const j of persistTimers.keys()) keep.add(j);
+  for (const [j, data] of jsons) if (data && !keep.has(j)) writeFsFile(ctx.FS, `/data/jobs/${j}/job.json`, data);
+  ctx.W.refresh_all(JSON.stringify(ids.filter((j) => !keep.has(j))), JSON.stringify([...keep]));
 }
 
 function getAllRange(st, range) {
@@ -486,7 +499,9 @@ function progressCb(jid, key) {
     const now = Date.now();
     if (now - last < 250 && frac < 1) return;
     last = now;
-    void pycall("job_progress", jid, key, frac, msg).then(() => persistJob(jid));
+    void pycall("job_progress", jid, key, frac, msg)
+      .then(() => persistJob(jid))
+      .catch((e) => console.warn(e));
   };
 }
 

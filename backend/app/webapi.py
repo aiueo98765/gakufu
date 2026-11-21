@@ -76,14 +76,23 @@ def refresh(jid: str) -> None:
         manager.jobs[jid] = Job(data)
 
 
-def refresh_all(ids_json: str, keep: str = "") -> None:
+def refresh_all(ids_json: str, keep_json: str = "[]") -> None:
+    """別のタブの変更を一覧に反映する。keep（このタブが処理中・作成直後・保存待ちの曲）には触らない。"""
     ids = set(json.loads(ids_json))
+    keep = set(json.loads(keep_json or "[]"))
     for jid in list(manager.jobs):
-        if jid not in ids and jid != keep:
+        if jid not in ids and jid not in keep:
             manager.jobs.pop(jid, None)
-    for jid in ids:
-        if jid != keep:
-            refresh(jid)
+    for jid in ids - keep:
+        refresh(jid)
+
+
+def _job(jid: str):
+    """処理中の曲。見つからなければ（別のタブで消されたなど）はっきりエラーにする。"""
+    job = manager.get(jid)
+    if not job:
+        raise RuntimeError("この曲のデータが見つからなくなりました（別のタブで削除された可能性があります）")
+    return job
 
 
 def _j(x) -> str:
@@ -174,27 +183,20 @@ def job_get(jid: str) -> str:
 
 
 def job_update(jid: str, patch_json: str) -> None:
-    job = manager.get(jid)
-    if job:
-        manager.update(job, force=True, **json.loads(patch_json))
+    manager.update(_job(jid), force=True, **json.loads(patch_json))
 
 
 def job_meta(jid: str, meta_json: str) -> None:
-    job = manager.get(jid)
-    if job:
-        manager.update(job, meta={**job.data.get("meta", {}), **json.loads(meta_json)}, force=True)
+    job = _job(jid)
+    manager.update(job, meta={**job.data.get("meta", {}), **json.loads(meta_json)}, force=True)
 
 
 def job_step(jid: str, key: str, state: str, detail: str = "") -> None:
-    job = manager.get(jid)
-    if job:
-        manager.step(job, key, state, detail)
+    manager.step(_job(jid), key, state, detail)
 
 
 def job_progress(jid: str, key: str, frac: float, msg: str = "") -> None:
-    job = manager.get(jid)
-    if not job:
-        return
+    job = _job(jid)
     with manager.lock:
         manager._recalc(job, key, frac)
         if msg:
@@ -341,7 +343,7 @@ def analyze(jid: str, y22050, kind: str, ratios_json: str, dnn_json: str) -> str
 
 
 def arrange_first(jid: str) -> str:
-    job = manager.get(jid)
+    job = _job(jid)
     d = job_dir(jid)
     req = job.data["request"]
     mode = req.get("mode", "standard")
@@ -352,7 +354,7 @@ def arrange_first(jid: str) -> str:
 
 
 def job_finish(jid: str, sep_json: str, kind: str, engine: str, engine_id: str, target_label: str) -> None:
-    job = manager.get(jid)
+    job = _job(jid)
     d = job_dir(jid)
     analysis = pipeline.load_json(d / "analysis.json")
     mode = job.data["request"].get("mode", "standard")
@@ -361,7 +363,7 @@ def job_finish(jid: str, sep_json: str, kind: str, engine: str, engine_id: str, 
 
 
 def finish_retranscribe(jid: str, notes_json: str, pedals_json: str, engine: str, engine_id: str, kind: str, target_label: str) -> None:
-    job = manager.get(jid)
+    job = _job(jid)
     d = job_dir(jid)
     raw = pipeline.save_raw(d, json.loads(notes_json), json.loads(pedals_json), engine, engine_id, kind, target_label)
     manager.step(job, "transcribe", "done", pipeline.transcribe_detail(raw))
